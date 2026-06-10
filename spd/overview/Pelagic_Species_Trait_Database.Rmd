@@ -1,0 +1,782 @@
+---
+title: "Pelagic Species Trait Database R code"
+author: "Miram Gleiber"
+date: "9/26/2023"
+output: html_document
+---
+
+This document includes instructional code that accompanies the Pelagic Species Trait Database:
+
+Gleiber, Miram R.; Hardy, Natasha A.; Roote, Zachary; Krug-Macleod, Alana; Morganson, Caitlin J.; Tandy, Zackary; George, Iris; Matuch, Cindy; Brookson, Cole B.; Daly, Elizabeth A.; Portner, Elan J.; Choy, C. Anela; Crowder, Larry B.; Green, Stephanie J., 2022, "Pelagic Species Trait Database", https://doi.org/10.5683/SP3/0YFJED, Borealis
+
+The goal of this code is to provide a framework for the creation of future trait databases. We aim for users to be able to replicate the data collection protocols, processing, and summaries included in the Pelagic Species Trait Database. The code includes separate sections documenting:
+
+1) Data collection
+    * Automated trait data collection from FishBase using rfishbase package
+
+2) Data manipulation & processing
+    * Morphometric ratios calculations and summaries generated from raw data collection
+    * Nutritional quality value calculations and summaries generated from raw data collection
+    * Habitat, behavioral, morphological, and population status trait calculations and variable conversions
+    
+3) Integration of all trait data for final summary table
+
+All input files and generated output files can be downloaded from the database on Borealis Please download the the entire database as a .ZIP file in the original format (.csv), and run this code from WITHIN that folder, which is set by default as the default working directory. All file paths for reading and writing files incorporates the folder structure in Borealis.
+
+#### Setup
+
+```{r Working environment, results = FALSE, message=FALSE}
+#Load necessary packages
+library(tidyverse)
+library(dplyr)
+library(tidyr)
+library(readr)
+library(rfishbase)
+library(here)
+
+#Check working directory is correct (should be the folder 'dataverse_files')
+getwd()
+
+#Remove scientific notation
+options(scipen=999)
+```
+
+
+## rfishbase Trait Data Collection
+
+This code chunk extracts species traits that may be available from FishBase through the use of the rfishbase package.
+The package is a programmatic interface in R to the fishbase.org database. Extraction from SealifeBase may be possible with rfishbase, however current version only currently supports limited experimental access to SealifeBase, thus not included in this code. Using rfishbase version 4.0.0, functions/fields may change in future versions. More information about the rfishbase package can be found at: https://cran.r-project.org/web/packages/rfishbase/rfishbase.pdf
+
+This code is used to expedite trait data collection from FishBase for a list of species. Used in place of searching individual species in website interface. Only data gathering, information in the output file is manually transferred to the trait data collection spreadsheet (data_collection_9_traits.csv). Some variables are used directly, while others may require some interpretation and comparison with other sources of trait information. rfishbase variables and information are generally related to adults,  although juvenile or larval information may be included in text for more well-described species. In some instances adult traits may be similar for juveniles, but need to cross-reference other sources. 
+
+Input: Species list
+
+Code: Look up & extract species trait information FishBase
+
+Output: rfishbase variables for each of the species, used for manual input to the data collection spreadsheet (data_collection_9_traits.csv)
+
+```{r Trait data collection from FishBase, results = FALSE, message=FALSE}
+#List of all functions and fields in rfishbase
+fishbase_vars = list_fields()
+
+#Import a list of species
+species <- data.frame(Species=c("Engraulis mordax", "Sardinops sagax", "Merluccius productus", "Scomber japonicus", "Boops boops"))
+#species = read_csv('./example_species_list.csv')
+
+#Extract trait data (if available) from FishBase
+#Note: this may take a few minutes when running the first time, depending on the length of the species list
+traits_rfishbase = species %>%
+  left_join(estimate(species$Species,server="fishbase") %>% 
+              dplyr::select(Species,TempPrefMin,TempPrefMax,TempPrefMean,Troph,seTroph)) %>%
+  left_join(species(species$Species,server="fishbase") %>% 
+              dplyr::select(Species,DepthRangeShallow,DepthRangeDeep,Comments,Fresh,
+                            Brack,DemersPelag,AnaCat,BodyShapeI,Length,LTypeMaxM,Importance)) %>%
+  left_join(ecology(species$Species,server="fishbase") %>% 
+              dplyr::select(Species,Epipelagic,Mesopelagic,Bathypelagic,Benthic,Demersal,Intertidal,
+                            Estuaries,Oceanic,Lakes,Stream,AddRems,Schooling,SchoolingLifestage,
+                            Shoaling,ShoalingLifestage,AssociationsRemarks)) %>%
+  left_join(morphology(species$Species,server="fishbase") %>% 
+              dplyr::select(Species,DorsalSpinesMax,AnalFinSpinesMax))
+
+head(traits_rfishbase)
+
+#The output file contains trait data with one row for each species used for manual data collection of variables in '9_trait_data_collection_example'.
+#write.csv(traits_rfishbase, './rfishbase_traits.csv', row.names = FALSE)
+#This command is commented out as this code section is just an example of data collection through rfishbase and not part of the database outputs.
+
+#Additional data on length a maturity (LengthMatMin & Lm) from FishBase. There can be multiple data points for each species in the FishBase database. Use best judgement on values to use in trait data collection. May need to consult additional literature/resources.
+length_maturity = species %>%
+  left_join(maturity(species$Species,server="fishbase") %>% 
+              dplyr::select(Species,LengthMatMin,Lm,Type1)) %>%
+  filter((!is.na(LengthMatMin) | !is.na(Lm)) & !is.na(Type1))
+#Excludes rows with no data, or no length type. 
+
+head(length_maturity)
+
+#write.csv(length_maturity, './rfishbase_traits_length_maturity.csv', row.names = FALSE)
+#This command is commented out as it is simply an example of data collection through rfishbase and not part of the database outputs.
+
+
+#Pelagic Species Trait Database variables and associated rfishbase variables used for data collection. 
+#Also see metadata: '9metadata_trait_data_collection_example' for full instructions on trait data collection
+#depth_shallow = DepthRangeShallow
+#depth_deep = DepthRangeDeep
+#temp_min = TempPrefMin
+#temp_max = TempPrefMax
+#temp_mean = TempPrefMean
+#vert_habitat & horz_habitat = AddRems & Comments can include a text description of habitats
+#vert_habitat = Epipelagic,	Mesopelagic,	Bathypelagic,	Benthic,	Demersal (not always available; -1 = yes, 0 = NA)
+#horz_habitat = Intertidal,	Estuaries, Oceanic, Lakes, Stream, Fresh, Brack (-1 = yes, 0 = NA)
+#DemersPelag = DemersPelag
+#AnaCat = AnaCat
+#body_shape = BodyShapeI
+#l_min = LengthMatMin, Lm (adult l_min)
+#l_min_type = Type1 (length type for LengthMatMin & Lm)
+#l_max = Length (adult l_max); LengthMatMin, Lm (juvenile l_max)
+#l_max_type = LTypeMaxM (length type for Length); Type1
+#defense_spines = DorsalSpinesMax + AnalFinSpinesMax
+#gregarious_original, gregarious = Schooling, Shoaling (-1 = yes, 0 = NA); SchoolingLifestage, ShoalingLifestage,	AssociationsRemarks
+#trophic_level = Troph
+#troph_lev_se = seTroph
+#fisheries_status = Importance
+
+rm(species, traits_rfishbase,length_maturity, fishbase_vars)
+
+```
+
+
+## Morphometric Ratios Data Processing
+
+This code section processes individual morphometric measurements from specimen image data collection, to generate final database tables. Processing includes measurement cleaning (exclusion of erroneous measurements), morphometric ratio calculations, and generating summary information for each species/lifestage.
+
+Input: Collected morphometric measurement data (data_collection_10_morphometric_ratios.csv)
+
+Code: Ratio calculations, exclusion of erroneous measurements, summary for each species/lifestage (and for higher level taxa)
+
+Outputs: Raw processed data (5_morphometric_ratios_raw.csv), Morphometric ratio summary, morphometric ratio higher-level taxa proxies
+
+```{r Morphometric ratio data collection processing, results = FALSE, message=FALSE}
+#Load morphometric measurements from data collection spreadsheet
+morph_collect = read_csv('./data_collection/morphometric_ratios/data_collection_10_morphometric_ratios.csv')
+
+#Measurement notes (see 10metadata_morphometric_ratios_data_collection.csv for more details)
+#   0 = feature not present (e.g. no dorsal fins, no eyes)
+#   NA = feature not visible (e.g. fins folded and t_height can't be measured)
+
+head(morph_collect)
+
+#Calculate morphometric ratios for each usable image
+ratios = morph_collect %>%
+  mutate(TL_TH = t_length/t_height,
+         TL_BH = t_length/b_height,
+         SL_TL = s_length/t_length,
+         SL_TH = s_length/t_height,
+         SL_BH = s_length/b_height,
+         eye_TL = eye_diameter/t_length) %>%
+  dplyr::select(class:life_stage,use,TL_TH:eye_TL,s_length:eye_diameter,
+                status_type,fin_arm_status,notes,file_name,measurer,image_type,scale_bar,source)
+#Rows with all NAs if species/lifestage searched, but no images found (indicated in 'Notes')
+#If no eye, eye_TL = 0
+
+#Calculate number of replicate images for each species & lifestage
+replicates = ratios %>%
+  group_by(sci_name, life_stage) %>%
+  summarise(replicates = sum(use == "yes")) %>%
+  mutate(replicates = ifelse(is.na(replicates),0,replicates))
+  
+ratios_raw = ratios %>%
+  full_join(replicates) %>%
+  dplyr::select(class:life_stage,replicates,use:source)
+
+head(ratios_raw)
+
+#Create morphometric ratios raw data table
+write.csv(ratios_raw, './trait_data/morphological/5_morphometric_ratios_raw.csv',row.names = FALSE)
+rm(ratios_raw, ratios, morph_collect, replicates)
+
+```
+
+#### Morphometric Ratios Summary
+```{r Morphometric ratios summary, results = FALSE, message=FALSE}
+#Load raw processed data file (generated by code above)
+ratios_raw = read_csv('./trait_data/morphological_traits/5_morphometric_ratios_raw.csv')
+
+#Exclude unusable data, create binary code notes on erroneous measurements
+ratios_raw_use = ratios_raw %>%
+  mutate(fin = ifelse(str_detect(status_type, 'fin') & !is.na(status_type),1,0),
+         folded = ifelse((str_detect(fin_arm_status,'folded') | str_detect(fin_arm_status,'absent') |
+                         str_detect(fin_arm_status,'not visible')) & !is.na(fin_arm_status),1,0),
+         use = as.factor(use)) %>%
+  filter(!use %in% c("no"))
+
+#1: Mean ratio for TL_TH & SL_TH. Mean excludes individuals with folded fins due to error in total height estimate.
+morph_tl_th = ratios_raw_use %>%
+  filter(fin == 0 | folded == 0) %>%
+  group_by(class,order,family,genus,sci_name,life_stage) %>%
+  summarise(mean_TL_TH = mean(TL_TH, na.rm = TRUE),
+            sd_TL_TH = sd(TL_TH, na.rm = TRUE),
+            n_TL_TH = sum(!is.na(TL_TH)),
+            mean_SL_TH = mean(SL_TH, na.rm = TRUE),
+            sd_SL_TH = sd(SL_TH, na.rm = TRUE),
+            n_SL_TH = sum(!is.na(SL_TH))) %>%
+  mutate(mean_TL_TH = replace(mean_TL_TH, mean_TL_TH=="NaN", NA),
+         mean_SL_TH = replace(mean_SL_TH, mean_SL_TH=="NaN", NA))
+
+#2: Mean ratio for TL_BH, SL_BH, SL_TL & eye_body for all morph measurements. 
+#No fin related issues since BH (body height) excludes fins.
+morph_means = ratios_raw_use %>%
+  group_by(class,order,family,genus,sci_name,life_stage) %>%
+  summarise(mean_TL_BH = mean(TL_BH, na.rm = TRUE),
+            sd_TL_BH = sd(TL_BH, na.rm = TRUE),
+            mean_SL_BH = mean(SL_BH, na.rm = TRUE),
+            sd_SL_BH = sd(SL_BH, na.rm = TRUE),
+            mean_SL_TL = mean(SL_TL, na.rm = TRUE),
+            sd_SL_TL = sd(SL_TL, na.rm = TRUE),
+            mean_eye_TL = mean(eye_TL, na.rm = TRUE),
+            sd_eye_TL = sd(eye_TL, na.rm = TRUE),
+            n_TL_BH = sum(!is.na(TL_BH)),
+            n_SL_BH = sum(!is.na(SL_BH)),
+            n_SL_TL = sum(!is.na(SL_TL)),
+            n_eye_TL = sum(!is.na(eye_TL))) %>%
+  mutate(mean_TL_BH = replace(mean_TL_BH, mean_TL_BH=="NaN", NA),
+         mean_SL_BH = replace(mean_SL_BH, mean_SL_BH=="NaN", NA),
+         mean_SL_TL = replace(mean_SL_TL, mean_SL_TL=="NaN", NA),
+         mean_eye_TL = replace(mean_eye_TL, mean_eye_TL=="NaN", NA))
+
+#Combine summary information
+morph_summary = morph_means %>%
+  full_join(morph_tl_th) %>%
+  dplyr::select(class:life_stage,mean_TL_BH,mean_SL_BH,mean_TL_TH,mean_SL_TH,mean_SL_TL,mean_eye_TL,
+                sd_TL_BH,sd_SL_BH,sd_TL_TH,sd_SL_TH,sd_SL_TL,sd_eye_TL,
+                n_TL_BH,n_SL_BH,n_TL_TH,n_SL_TH,sd_SL_TH,n_SL_TL,n_eye_TL) %>%
+  mutate(n_TL_TH = replace(n_TL_TH, is.na(n_TL_TH), 0),
+         n_SL_TH = replace(n_SL_TH, is.na(n_SL_TH), 0)) %>%
+  filter(n_TL_BH != 0 | n_SL_BH != 0 | n_TL_TH != 0 | n_SL_TH != 0 | n_SL_TL != 0 | n_eye_TL != 0) %>%
+  arrange(sci_name)
+
+head(morph_summary)
+
+#Final morphometric ratio summary table (morph_summary) is joined with the morphological traits in the 'Trait Data Processing' code chunk below. The table with a list of species/lifestage with no usable morphometric images found (morph_no) will also incorporated below. 
+
+rm(ratios_raw,ratios_raw_use,morph_means,morph_tl_th)
+```
+
+#### Morphometric Ratios Summary: Higher-level taxa
+```{r Morphometric ratios summary: higher level taxa, results = FALSE, message=FALSE}
+#Generated to provide higher-level taxa proxies for length type conversions of morphological l_min and l_max traits (minimum/maximum length known for a species size per lifestage) in the "Trait Data Processing' section.
+
+#Genus-level
+morph_genus = morph_summary %>%
+  group_by(class,order,family,genus,life_stage) %>%
+  summarise(TL_BH_gen = mean(mean_TL_BH, na.rm = TRUE),
+            SL_BH_gen = mean(mean_SL_BH, na.rm = TRUE),
+            TL_TH_gen = mean(mean_TL_TH, na.rm = TRUE),
+            SL_TH_gen = mean(mean_SL_TH, na.rm = TRUE),
+            SL_TL_gen = mean(mean_SL_TL, na.rm = TRUE),
+            eye_TL_gen = mean(mean_eye_TL, na.rm = TRUE),
+            n_TL_BH_gen = sum(n_TL_BH),
+            n_SL_BH_gen = sum(n_SL_BH),
+            n_TL_TH_gen = sum(n_TL_TH),
+            n_SL_TH_gen = sum(n_SL_TH),
+            n_SL_TL_gen = sum(n_SL_TL),
+            n_eye_TL_gen = sum(n_eye_TL)) %>%
+  mutate(tax_level = "genus",
+         TL_BH_gen = ifelse(TL_BH_gen == "NaN",NA,TL_BH_gen),
+         SL_BH_gen = ifelse(SL_BH_gen == "NaN",NA,SL_BH_gen),
+         TL_TH_gen = ifelse(TL_TH_gen == "NaN",NA,TL_TH_gen),
+         SL_TH_gen = ifelse(SL_TH_gen == "NaN",NA,SL_TH_gen),
+         SL_TL_gen = ifelse(SL_TL_gen == "NaN",NA,SL_TL_gen),
+         eye_TL_gen = ifelse(eye_TL_gen == "NaN",NA,eye_TL_gen),
+         sci_name = paste(genus,"spp.",sep = " "))
+
+#Family-level
+morph_family = morph_summary %>%
+  group_by(class,order,family,life_stage) %>%
+  summarise(TL_BH_fam = mean(mean_TL_BH, na.rm = TRUE),
+            SL_BH_fam = mean(mean_SL_BH, na.rm = TRUE),
+            TL_TH_fam = mean(mean_TL_TH, na.rm = TRUE),
+            SL_TH_fam = mean(mean_SL_TH, na.rm = TRUE),
+            SL_TL_fam = mean(mean_SL_TL, na.rm = TRUE),
+            eye_TL_fam = mean(mean_eye_TL, na.rm = TRUE),
+            n_TL_BH_fam = sum(n_TL_BH),
+            n_SL_BH_fam = sum(n_SL_BH),
+            n_TL_TH_fam = sum(n_TL_TH),
+            n_SL_TH_fam = sum(n_SL_TH),
+            n_SL_TL_fam = sum(n_SL_TL),
+            n_eye_TL_fam = sum(n_eye_TL)) %>%
+  mutate(tax_level = "family",
+         TL_BH_fam = ifelse(TL_BH_fam == "NaN",NA,TL_BH_fam),
+         SL_BH_fam = ifelse(SL_BH_fam == "NaN",NA,SL_BH_fam),
+         TL_TH_fam = ifelse(TL_TH_fam == "NaN",NA,TL_TH_fam),
+         SL_TH_fam = ifelse(SL_TH_fam == "NaN",NA,SL_TH_fam),
+         SL_TL_fam = ifelse(SL_TL_fam == "NaN",NA,SL_TL_fam),
+         eye_TL_fam = ifelse(eye_TL_fam == "NaN",NA,eye_TL_fam),
+         sci_name = paste(family,"spp.",sep = " "))
+
+#Order-level
+morph_order = morph_summary %>%
+  group_by(class,order,life_stage) %>%
+  summarise(TL_BH_ord = mean(mean_TL_BH, na.rm = TRUE),
+            SL_BH_ord = mean(mean_SL_BH, na.rm = TRUE),
+            TL_TH_ord = mean(mean_TL_TH, na.rm = TRUE),
+            SL_TH_ord = mean(mean_SL_TH, na.rm = TRUE),
+            SL_TL_ord = mean(mean_SL_TL, na.rm = TRUE),
+            eye_TL_ord = mean(mean_eye_TL, na.rm = TRUE),
+            n_TL_BH_ord = sum(n_TL_BH),
+            n_SL_BH_ord = sum(n_SL_BH),
+            n_TL_TH_ord = sum(n_TL_TH),
+            n_SL_TH_ord = sum(n_SL_TH),
+            n_SL_TL_ord = sum(n_SL_TL),
+            n_eye_T_ordL = sum(n_eye_TL)) %>%
+  mutate(tax_level = "order",
+         TL_BH_ord = ifelse(TL_BH_ord == "NaN",NA,TL_BH_ord),
+         SL_BH_ord = ifelse(SL_BH_ord == "NaN",NA,SL_BH_ord),
+         TL_TH_ord = ifelse(TL_TH_ord == "NaN",NA,TL_TH_ord),
+         SL_TH_ord = ifelse(SL_TH_ord == "NaN",NA,SL_TH_ord),
+         SL_TL_ord = ifelse(SL_TL_ord == "NaN",NA,SL_TL_ord),
+         eye_TL_ord = ifelse(eye_TL_ord == "NaN",NA,eye_TL_ord),
+         sci_name = paste(order,"spp.",sep = " "))
+
+#Combine species, genus, family, order level mean morphometric ratios.
+#Table is in wide format to enable multiple choices of a higher-level taxa proxy to be used if a species mean does not exist
+morph_sp_wide = morph_summary %>%
+  mutate(tax_level = "species") %>%
+  dplyr::select(class:life_stage,tax_level,mean_TL_BH:mean_eye_TL) %>%
+  rename(TL_BH_sp = mean_TL_BH,
+         SL_BH_sp = mean_SL_BH,
+         TL_TH_sp = mean_TL_TH,
+         SL_TH_sp = mean_SL_TH,
+         SL_TL_sp = mean_SL_TL,
+         eye_TL_sp = mean_eye_TL) %>%
+  full_join(morph_genus %>% dplyr::select(class:eye_TL_gen)) %>%
+  full_join(morph_family %>% dplyr::select(class:eye_TL_fam)) %>%
+  full_join(morph_order %>% dplyr::select(class:eye_TL_ord))
+
+morph_genus_wide = morph_genus %>%
+  dplyr::select(class:genus,sci_name,tax_level,life_stage,TL_BH_gen:eye_TL_gen) %>%
+  full_join(morph_family %>% dplyr::select(class:eye_TL_fam)) %>%
+  full_join(morph_order %>% dplyr::select(class:eye_TL_ord))
+
+morph_fam_wide = morph_family %>%
+  dplyr::select(class:family,sci_name,tax_level,life_stage,TL_BH_fam:eye_TL_fam) %>%
+  full_join(morph_order %>% dplyr::select(class:eye_TL_ord))
+
+morph_order_wide = morph_order %>%
+  dplyr::select(class,order,sci_name,tax_level,life_stage,TL_BH_ord:eye_TL_ord)
+
+morph_proxy_wide = morph_sp_wide %>%
+  full_join(morph_genus_wide) %>%
+  full_join(morph_fam_wide) %>%
+  full_join(morph_order_wide) %>%
+  ungroup()
+
+head(morph_proxy_wide)
+#Final table is used in 'Trait Data Processing' to convert different length types to total length
+
+rm(morph_genus,morph_family,morph_order,morph_sp_wide,morph_genus_wide,morph_fam_wide,morph_order_wide)
+```
+
+
+## Nutritonal Quality Data Processing
+
+This code section processes individual nutritional quality data (lipid, protein, energy density) collected from literature searches to generate final database tables. Processing includes standardizing all values as wet weight and summary information for each species (excluding unusable data - e.g. unable to be converted to wet weight)
+
+Input: Collected nutritional quality data (data_collection_11_nutritional_quality.csv)
+
+Code: Wet weight calculations, exclusion of unusable values, mean value calculation
+
+Output: Raw processed data (7_nutritional_raw.csv), Nutritional quality summary (6_nutritional_traits.csv)
+
+```{r Nutritional quality data collection processing, results = FALSE, message=FALSE}
+#Load nutritional quality data from data collection spreadsheet
+qual_collect = read_csv('./data_collection/nutritional_quality/data_collection_11_nutritional_quality.csv')
+# See 11metadata_nutritional_quality_data_collection.csv for more details on data
+
+head(qual_collect)
+
+#Standardize all values as wet weight
+# Converts dry weight (dw) and ash-free dry weight (afdw) values to wet weight (ww)
+# Conversion requires sample water content (and ash content for afdw), thus not all values can be converted
+qual_raw = qual_collect %>%
+  mutate(lipid_ww_from_dw = (lipid_dw/100)*(100-water),
+         protein_ww_from_dw = (protein_dw/100)*(100-water),
+         energy_ww_from_dw = (energy_dw/100)*(100-water),
+         lipid_ww_from_afdw_ash_dw = ((lipid_afdw/100)*(100-ash_dw))/100*(100-water),
+         protein_ww_from_afdw_ash_dw = ((protein_afdw/100)*(100-ash_dw))/100*(100-water),
+         energy_ww_from_afdw_ash_dw = ((energy_afdw/100)*(100-ash_dw))/100*(100-water),
+         lipid_ww_from_afdw_ash_ww = (((lipid_afdw/100)*(100-((ash_ww/(100-water))*100)))/100)*(100-water),
+         protein_ww_from_afdw_ash_ww = (((protein_afdw/100)*(100-((ash_ww/(100-water))*100)))/100)*(100-water),
+         energy_ww_from_afdw_ash_ww = (((energy_afdw/100)*(100-((ash_ww/(100-water))*100)))/100)*(100-water)) %>%
+  mutate(lipid_ww_percent = ifelse(!is.na(lipid_ww),lipid_ww,
+                            ifelse(!is.na(lipid_ww_from_dw),lipid_ww_from_dw,
+                            ifelse(!is.na(lipid_ww_from_afdw_ash_dw),lipid_ww_from_afdw_ash_dw,
+                            ifelse(!is.na(lipid_ww_from_afdw_ash_ww),lipid_ww_from_afdw_ash_ww,NA)))),
+         protein_ww_percent = ifelse(!is.na(protein_ww),protein_ww,
+                              ifelse(!is.na(protein_ww_from_dw),protein_ww_from_dw,
+                              ifelse(!is.na(protein_ww_from_afdw_ash_dw),protein_ww_from_afdw_ash_dw,
+                              ifelse(!is.na(protein_ww_from_afdw_ash_ww),protein_ww_from_afdw_ash_ww,NA)))),
+         energy_ww_kj_g = ifelse(!is.na(energy_ww),energy_ww,
+                          ifelse(!is.na(energy_ww_from_dw),energy_ww_from_dw,
+                          ifelse(!is.na(energy_ww_from_afdw_ash_dw),energy_ww_from_afdw_ash_dw,
+                          ifelse(!is.na(energy_ww_from_afdw_ash_ww),energy_ww_from_afdw_ash_ww,NA))))) %>%
+  dplyr::select(class:tax_level,qual_found,lipid_ww_percent,protein_ww_percent,energy_ww_kj_g,energy_method,
+                lipid_ww,lipid_dw,lipid_afdw,protein_ww,protein_dw,protein_afdw,energy_ww,energy_dw,energy_afdw,
+                n,water,ash_ww,ash_dw,life_stage,age,sex,ww_mean_g,ww_min_g,ww_max_g,
+                length_mean_cm,length_min_cm,length_max_cm,length_type,
+                year_start,year_end,start_month,end_month,start_day,end_day,
+                lat,long,longhurst_province,specific_location,ocean_basin,reference,url,notes)
+
+head(qual_raw)
+
+#Create nutritional quality raw data table
+write.csv(qual_raw, './trait_data/nutritional_quality/7_nutritional_raw.csv', row.names = FALSE)
+rm(qual_raw, qual_collect)
+```
+
+#### Nutritional Quality Summary
+```{r Nutritional quality summary, results = FALSE, message=FALSE}
+#Load raw processed data file (generated by code above)
+qual_raw = read_csv('./trait_data/nutritional_quality/7_nutritional_raw.csv')
+
+#Global summary table
+#Calculates mean lipid, protein, or energy density values per taxa calculated from all global data (excludes unusable data)
+qual_mean = qual_raw %>%
+  filter(qual_found == "yes" | qual_found == "water_proxy" | qual_found == "unpub_data") %>%
+  group_by(class,order,family,genus,sci_name,tax_level) %>%
+  summarise(lipid = mean(lipid_ww_percent,na.rm = TRUE),
+            protein = mean(protein_ww_percent,na.rm = TRUE),
+            energy = mean(energy_ww_kj_g,na.rm = TRUE),
+            n_lipid = sum(!is.na(lipid_ww_percent)),
+            n_protein = sum(!is.na(protein_ww_percent)),
+            n_energy = sum(!is.na(energy_ww_kj_g)),
+            sd_lipid = sd(lipid_ww_percent, na.rm = TRUE),
+            sd_protein = sd(protein_ww_percent, na.rm = TRUE),
+            sd_energy = sd(energy_ww_kj_g, na.rm = TRUE)) %>%
+  mutate(lipid = replace(lipid, lipid=="NaN", NA),
+         protein = replace(protein, protein=="NaN", NA),
+         energy = replace(energy, energy=="NaN", NA),
+         sd_lipid = ifelse(sd_lipid == "NaN",NA,sd_lipid),
+         sd_protein = ifelse(sd_protein == "NaN",NA,sd_protein),
+         sd_energy = ifelse(sd_energy == "NaN",NA,sd_energy)) %>%
+  arrange(sci_name)
+
+#Pacific Ocean summary table
+#Calculates mean lipid, protein, or energy density values per taxa calculated from all Pacific Ocean data (excludes unusable data)
+qual_mean_pac = qual_raw %>%
+  filter(qual_found == "yes" | qual_found == "water_proxy" | qual_found == "unpub_data") %>%
+  filter(ocean_basin == "Pacific Ocean") %>%
+  group_by(class,order,family,genus,sci_name,tax_level) %>%
+  summarise(lipid_pacific = mean(lipid_ww_percent,na.rm = TRUE),
+            protein_pacific = mean(protein_ww_percent,na.rm = TRUE),
+            energy_pacific = mean(energy_ww_kj_g,na.rm = TRUE),
+            n_lipid_pacific = sum(!is.na(lipid_ww_percent)),
+            n_protein_pacific = sum(!is.na(protein_ww_percent)),
+            n_energy_pacific = sum(!is.na(energy_ww_kj_g)),
+            sd_lipid_pacific = sd(lipid_ww_percent, na.rm = TRUE),
+            sd_protein_pacific = sd(protein_ww_percent, na.rm = TRUE),
+            sd_energy_pacific = sd(energy_ww_kj_g, na.rm = TRUE)) %>%
+  mutate(lipid_pacific = replace(lipid_pacific, lipid_pacific=="NaN", NA),
+         protein_pacific = replace(protein_pacific, protein_pacific=="NaN", NA),
+         energy_pacific = replace(energy_pacific, energy_pacific=="NaN", NA),
+         sd_lipid_pacific = ifelse(sd_lipid_pacific == "NaN",NA,sd_lipid_pacific),
+         sd_protein_pacific = ifelse(sd_protein_pacific == "NaN",NA,sd_protein_pacific),
+         sd_energy_pacific = ifelse(sd_energy_pacific == "NaN",NA,sd_energy_pacific)) %>%
+  arrange(sci_name)
+
+#Combined Global and Pacific nutritonal quality summaries
+qual_mean_all = qual_mean %>%
+  left_join(qual_mean_pac) %>%
+  dplyr::select(class:energy,lipid_pacific:energy_pacific,n_lipid:n_energy,
+                n_lipid_pacific:n_energy_pacific,sd_lipid:sd_energy,sd_lipid_pacific:sd_energy_pacific)
+
+head(qual_mean_all)
+
+#Create nutritional quality trait summary table
+write.csv(qual_mean_all, './trait_data/nutritional_quality/6_nutritional_traits.csv', row.names = FALSE)
+rm(qual_mean_all, qual_mean, qual_mean_pac, qual_raw)
+```
+
+
+## Trait Data Processing
+
+This code section processes habitat/behavioral, morphological & population status trait data collected from database, literature, and online searches, to generate final database tables. Processing includes creating binary/ordinal versions of variables, standardizing length as total length, and preparing final tables.
+
+Input: Collected trait data  (data_collection_9_traits.csv)
+
+Code: Assigns trait variables, splits traits by type for output (habitat/behavioral, morphological & population status), adds Morphometric ratio summary to morphological trait table, converts lengths to total length (using morphometric ratios).
+
+Output: Processed habitat/behavioral traits (3_habitat_behavior_traits.csv), Morphological traits (4_morphological_traits.csv), Population status traits (8_population_status_traits.csv)
+
+```{r Habitat/behavioral, morphological, population status trait data processing, results = FALSE, message=FALSE}
+#Load trait data from data collection spreadsheet
+trait_collect = read_csv("./data_collection/all_other_traits/data_collection_9_traits.csv")
+# See 9metadata_trait_data_collection.csv for more details on data
+
+head(trait_collect)
+
+#Calculating all binary & ordinal versions of variables
+trait_full = trait_collect %>%
+  mutate(vert_ordinal = ifelse(vert_habitat == "benthic",1,
+                        ifelse(vert_habitat == "demersal",2,
+                        ifelse(vert_habitat == "epipelagic",3,
+                        ifelse(vert_habitat == "mesopelagic",4,
+                        ifelse(vert_habitat == "bathypelagic",5,NA))))),
+         vert_benthic = ifelse(vert_habitat == "benthic" | vert_habitat_2 == "benthic" |
+                               vert_habitat_3 == "benthic",1,0),
+         vert_benthic = ifelse(is.na(vert_benthic) & (!is.na(vert_habitat) | !is.na(vert_habitat_2) |
+                                                      !is.na(vert_habitat_3)),0,vert_benthic),
+         vert_demersal = ifelse(vert_habitat == "demersal" | vert_habitat_2 == "demersal" |
+                                vert_habitat_3 == "demersal",1,0),
+         vert_demersal = ifelse(is.na(vert_demersal) & (!is.na(vert_habitat) | !is.na(vert_habitat_2) |
+                                                        !is.na(vert_habitat_3)),0,vert_demersal),
+         vert_epipelagic = ifelse(vert_habitat == "epipelagic" | vert_habitat_2 == "epipelagic" |
+                                  vert_habitat_3 == "epipelagic",1,0),
+         vert_epipelagic = ifelse(is.na(vert_epipelagic) & (!is.na(vert_habitat) | !is.na(vert_habitat_2) | 
+                                                            !is.na(vert_habitat_3)),0,vert_epipelagic),
+         vert_mesopelagic = ifelse(vert_habitat == "mesopelagic" | vert_habitat_2 == "mesopelagic" | 
+                                   vert_habitat_3 == "mesopelagic",1,0),
+         vert_mesopelagic = ifelse(is.na(vert_mesopelagic) & (!is.na(vert_habitat) | !is.na(vert_habitat_2) | 
+                                                              !is.na(vert_habitat_3)),0,vert_mesopelagic),
+         vert_bathypelagic = ifelse(vert_habitat == "bathypelagic" | vert_habitat_2 == "bathypelagic" |
+                                    vert_habitat_3 == "bathypelagic",1,0),
+         vert_bathypelagic = ifelse(is.na(vert_bathypelagic) & (!is.na(vert_habitat) | !is.na(vert_habitat_2) | 
+                                                                !is.na(vert_habitat_3)),0,vert_bathypelagic)) %>%
+  mutate(horz_ordinal = ifelse(horz_habitat == "intertidal",1,
+                        ifelse(horz_habitat == "reef-associated",2,
+                        ifelse(horz_habitat == "coastal",3,
+                        ifelse(horz_habitat == "continental shelf",4,
+                        ifelse(horz_habitat == "continental slope" | horz_habitat == "continental rise",5,
+                        ifelse(horz_habitat == "oceanic",6,
+                        ifelse(horz_habitat == "freshwater" | horz_habitat == "estuarine",7,NA))))))),
+         horz_intertidal = ifelse(horz_habitat == "intertidal" | horz_habitat_2 == "intertidal" | 
+                                  horz_habitat_3 == "intertidal",1,0),
+         horz_intertidal = ifelse(is.na(horz_intertidal) & (!is.na(horz_habitat) | !is.na(horz_habitat_2) | 
+                                                            !is.na(horz_habitat_3)),0,horz_intertidal),
+         horz_reef = ifelse(horz_habitat == "reef-associated" | horz_habitat_2 == "reef-associated" | 
+                            horz_habitat_3 == "reef-associated",1,0),
+         horz_reef = ifelse(is.na(horz_reef) & (!is.na(horz_habitat) | !is.na(horz_habitat_2) | 
+                                                !is.na(horz_habitat_3)),0,horz_reef),
+         horz_coastal = ifelse(horz_habitat == "coastal" | horz_habitat_2 == "coastal" | 
+                               horz_habitat_3 == "coastal",1,0),
+         horz_coastal = ifelse(is.na(horz_coastal) & (!is.na(horz_habitat) | !is.na(horz_habitat_2) | 
+                                                      !is.na(horz_habitat_3)),0,horz_coastal),
+         horz_continental_shelf = ifelse(horz_habitat == "continental shelf" | horz_habitat_2 == "continental shelf" | 
+                                         horz_habitat_3 == "continental shelf",1,0),
+         horz_continental_shelf = ifelse(is.na(horz_continental_shelf) & (!is.na(horz_habitat) | !is.na(horz_habitat_2) | 
+                                                                          !is.na(horz_habitat_3)),0,horz_continental_shelf),
+         horz_continental_slope = ifelse(horz_habitat == "continental slope" | horz_habitat_2 == "continental slope" | 
+                                         horz_habitat_3 == "continental slope",1,0),
+         horz_continental_slope = ifelse(is.na(horz_continental_slope) & (!is.na(horz_habitat) | !is.na(horz_habitat_2) | 
+                                                                          !is.na(horz_habitat_3)),0,horz_continental_slope),
+         horz_oceanic = ifelse(horz_habitat == "oceanic" | horz_habitat_2 == "oceanic" | horz_habitat_3 == "oceanic",1,0),
+         horz_oceanic = ifelse(is.na(horz_oceanic) & (!is.na(horz_habitat) | !is.na(horz_habitat_2) | 
+                                                      !is.na(horz_habitat_3)),0,horz_oceanic)) %>%
+    mutate(gregarious_ordinal = ifelse(gregarious == "solitary",1,
+                              ifelse(gregarious == "shoaling",2,
+                              ifelse(gregarious == "schooling",3,NA))),
+         gregarious_solitary = ifelse(gregarious == "solitary" | gregarious_2 == "solitary" | 
+                                      gregarious_3 == "solitary",1,0),
+         gregarious_solitary = ifelse(is.na(gregarious_solitary) & (!is.na(gregarious) | !is.na(gregarious_2) | 
+                                                                    !is.na(gregarious_3)),0,gregarious_solitary),
+         gregarious_shoaling = ifelse(gregarious == "shoaling" | gregarious_2 == "shoaling" | 
+                                      gregarious_3 == "shoaling",1,0),
+         gregarious_shoaling = ifelse(is.na(gregarious_shoaling) & (!is.na(gregarious) | !is.na(gregarious_2) | 
+                                                                    !is.na(gregarious_3)),0,gregarious_shoaling),
+         gregarious_schooling = ifelse(gregarious == "schooling" | gregarious_2 == "schooling" | 
+                                       gregarious_3 == "schooling",1,0),
+         gregarious_schooling = ifelse(is.na(gregarious_schooling) & (!is.na(gregarious) | !is.na(gregarious_2) | 
+                                                                      !is.na(gregarious_3)),0,gregarious_schooling)) %>%
+  mutate(body_shape_ordinal = ifelse(body_shape == "eel-like",1,
+                              ifelse(body_shape == "elongated",2,
+                              ifelse(body_shape == "fusiform",3,
+                              ifelse(body_shape == "compressiform",4,
+                              ifelse(body_shape == "depressiform",5,
+                              ifelse(body_shape == "globiform",6,NA)))))),
+         shape_eel_like = ifelse(body_shape == "eel-like",1,0),
+         shape_elongated = ifelse(body_shape == "elongated",1,0),
+         shape_fusiform = ifelse(body_shape == "fusiform",1,0),
+         shape_globiform = ifelse(body_shape == "globiform",1,0),
+         shape_compressiform = ifelse(body_shape == "compressiform",1,0),
+         shape_depressiform = ifelse(body_shape == "depressiform",1,0)) %>%
+  mutate(defense_spines_num = ifelse(defense_spines_num == "1 - telson",1,
+                          ifelse(defense_spines_num == "claws",2,defense_spines_num)),
+         defense_spines = ifelse(is.na(defense_spines_num),NA,
+                         ifelse(defense_spines_num == 0,0,1)),
+         phys_defense = ifelse(is.na(defense_spines_num) & is.na(exoskeleton),NA,
+                        ifelse(defense_spines == 0 & exoskeleton == 0,0,1)),
+         col_disrupt_type = ifelse(col_disrupt == 0,NA,col_disrupt_type),
+         photophore_num = ifelse(photophore_num == "PRESENT","present",photophore_num),
+         photophore = ifelse(is.na(photophore_num),NA,
+                         ifelse(photophore_num == 0,0,1))) %>%
+  mutate(fisheries_status = ifelse(fisheries_status == "of no interest","none",
+                            ifelse(fisheries_status == "of potential interest","potential",
+                            ifelse(fisheries_status == "subsistence fisheries","subsistence",fisheries_status))),
+         commercial = ifelse(fisheries_status == "highly commercial" | fisheries_status == "commercial" | 
+                             fisheries_status == "minor commercial" | fisheries_status == "subsistence", 1,0),
+         recreational = ifelse((recreational == 0 | is.na(recreational)) & fisheries_status == "recreational",1,recreational)) %>%
+  dplyr::select(class:trait_confidence,depth_min:vert_habitat_3,vert_ordinal:vert_bathypelagic,
+                horz_habitat:horz_habitat_3,horz_ordinal:horz_oceanic,habitat_note:habitat_note2,
+                habitat_ref,habitat_url,habitat_ref2,habitat_url2,habitat_ref3,habitat_url3,habitat_ref4,habitat_url4,
+                DemersPelag:diel_note2,diel_ref,diel_url,diel_ref2,diel_url2,diel_ref3,diel_url3,
+                refuge,refuge_note,refuge_ref,refuge_url,refuge_ref2,refuge_url2,refuge_ref3,refuge_url3,refuge_ref4,refuge_url4,
+                season_migrant,season_note,season_ref,season_url,season_ref2,season_url2,season_ref3,season_url3,AnaCat,
+                gregarious_original:gregarious_3,gregarious_ordinal:gregarious_schooling,
+                gregarious_note,gregarious_ref,gregarious_url,gregarious_ref2,gregarious_url2,gregarious_ref3,gregarious_url3,
+                body_shape,body_shape_ordinal:shape_depressiform,l_min:l_note,
+                l_ref,l_url,l_ref2,l_url2,l_ref3,l_url3,l_ref4,l_url4,
+                phys_defense,defense_spines_num,defense_spines,
+                exoskeleton:countershade_silver_note,countershade_ref,countershade_url,silver_ref,silver_url,
+                photophore_num,photophore,photophore_note,photophore_ref,photophore_url,photophore_ref2,photophore_url2,
+                trophic_level:fisheries_status,commercial,recreational,
+                addl_ref,addl_url,addl_ref2,addl_url2,addl_ref3,addl_url3,addl_ref4,addl_url4)
+
+#Separating habitat/behavioral traits for output table
+habitat_behavior = trait_full %>%
+  dplyr::select(class:trait_confidence,depth_min:vert_habitat_3,vert_ordinal:vert_bathypelagic,
+                horz_habitat:horz_habitat_3,horz_ordinal:horz_oceanic,habitat_note:habitat_note2,
+                habitat_ref,habitat_url,habitat_ref2,habitat_url2,habitat_ref3,habitat_url3,habitat_ref4,habitat_url4,
+                DemersPelag:diel_note2,diel_ref,diel_url,diel_ref2,diel_url2,diel_ref3,diel_url3,
+                refuge,refuge_note,refuge_ref,refuge_url,refuge_ref2,refuge_url2,refuge_ref3,refuge_url3,refuge_ref4,refuge_url4,
+                season_migrant,season_note,season_ref,season_url,season_ref2,season_url2,season_ref3,season_url3,AnaCat,
+                gregarious_original:gregarious_3,gregarious_ordinal:gregarious_schooling,
+                gregarious_note,gregarious_ref,gregarious_url,gregarious_ref2,gregarious_url2,gregarious_ref3,gregarious_url3,
+                addl_ref,addl_url,addl_ref2,addl_url2,addl_ref3,addl_url3,addl_ref4,addl_url4)
+write.csv(habitat_behavior, './trait_data/habitat_behavioral/3_habitat_behavior_traits.csv', row.names = FALSE)
+  
+#Separating population status traits for output table
+population = trait_full %>%
+  dplyr::select(class:life_stage,trophic_level:fisheries_status,commercial,recreational)
+write.csv(population, './trait_data/population_status/8_population_status_traits.csv', row.names = FALSE)
+
+#Separating morphological traits
+morphological = trait_full %>%
+    dplyr::select(class:life_stage,body_shape,body_shape_ordinal:shape_depressiform,
+                  l_min:l_note,l_ref,l_url,l_ref2,l_url2,l_ref3,l_url3,l_ref4,l_url4,
+                  phys_defense,defense_spines_num,defense_spines,
+                  exoskeleton:countershade_silver_note,countershade_ref,countershade_url,silver_ref,silver_url,
+                  photophore_num,photophore,photophore_note,photophore_ref,photophore_url,photophore_ref2,photophore_url2,
+                   addl_ref,addl_url,addl_ref2,addl_url2,addl_ref3,addl_url3,addl_ref4,addl_url4)
+
+#Convert length measurements (l_min & l_max) to total length (TL)
+#   l_min_type & l_max_type (length type for minimum/maximum length known for a species/lifestage) standardized to SL or TL (standard or total length)
+#   Apply mean morphometric ratios (SL_TL) to convert SL to TL for each species/lifestage
+#   Use a proxy morphometric ratio from the higher level taxa if species (genus or family) conversions are not available
+morphological_use = morphological %>%
+  mutate(l_min_type = case_when(l_min_type == "TL" ~ "TL",
+                                l_min_type == "SL" ~ "SL",
+                                l_min_type == "FL" ~ "TL", #fork length in some pelagic fishes ~ TL
+                                l_min_type == "NL" ~ "TL", #Notochord length in larvae ~ TL
+                                l_min_type == "CL" ~ "SL", #Carapace length in some crustaceans ~ SL
+                                l_min_type == "BL" ~ "TL", #Body length in larvae ~ TL
+                                l_min_type == "GL" ~ "SL", #Gladius length = Mantle length ~ standard length
+                                l_min_type == "ML" ~ "SL", #Mantle length ~ standard length
+                                l_min_type == "PCL" ~ "SL", #Pre-claval length for sunfish
+                                l_min_type == "BD" ~ "TL", #Bell Diameter (or total diameter) for jellyfish ~ TL (TL since these jellies are wider than long)
+                                l_min_type == "DML" ~ "SL", #Dorsal Mantle Length ~ SL
+                                l_min_type == "CW" ~ "SL", #Carapace width for crabs ~ SL
+                                l_min_type == "WD" ~ "TL", #Widest dimension for jellies ~ TL
+                                l_min_type == "DW" ~ "TH")) %>% #Disc width on stingray ~ TH (total height)
+  mutate(l_max_type =case_when(l_max_type == "TL" ~ "TL",
+                                l_max_type == "SL" ~ "SL",
+                                l_max_type == "FL" ~ "TL", #fork length in some pelagic fishes ~ TL
+                                l_max_type == "NL" ~ "TL", #Notochord length in larvae ~ TL
+                                l_max_type == "CL" ~ "SL", #Carapace length in some crustaceans ~ SL
+                                l_max_type == "BL" ~ "TL", #Body length in larvae ~ TL
+                                l_max_type == "GL" ~ "SL", #Gladius length = Mantle length ~ standard length
+                                l_max_type == "ML" ~ "SL", #Mantle length ~ standard length
+                                l_max_type == "AN" ~ "TL", #Anterior nectophore, appears only in a gastropod, using TL
+                                l_max_type == "PCL" ~ "SL", #Pre-claval length for sunfish
+                                l_max_type == "BD" ~ "TL", #Bell Diameter (or total diameter) for jellyfish ~ TL
+                                l_max_type == "CW" ~ "SL", #Carapace width for crabs ~ SL
+                                l_max_type == "WD" ~ "SL", #Widest dimension for jellies ~ TL
+                                l_max_type == "DL" ~ "SL", #Gastropod measure ~TL
+                                l_max_type == "DW" ~ "TH")) %>% #Disc width on stingray ~ TH (total height)
+  left_join(morph_proxy_wide %>% dplyr::select(class:life_stage,SL_TL_sp,TL_TH_sp)) %>%
+  left_join(morph_proxy_wide %>% filter(tax_level == "genus") %>% dplyr::select(class:genus,life_stage,SL_TL_gen)) %>%
+  left_join(morph_proxy_wide %>% filter(tax_level == "family") %>% dplyr::select(class:family,life_stage,SL_TL_fam)) %>%
+  left_join(morph_proxy_wide %>% filter(tax_level == "order") %>% dplyr::select(class:order,life_stage,SL_TL_ord)) %>%
+  mutate(l_min_TL = ifelse(l_min_type == "TL",l_min,
+                    ifelse(l_min_type == "TH",l_min*TL_TH_sp,
+                    ifelse(l_min_type == "SL" & !is.na(SL_TL_sp),l_min/SL_TL_sp,
+                    ifelse(l_min_type == "SL" & !is.na(SL_TL_gen),l_min/SL_TL_gen,
+                    ifelse(l_min_type == "SL" & !is.na(SL_TL_fam),l_min/SL_TL_fam,
+                    ifelse(l_min_type == "SL" & !is.na(SL_TL_ord),l_min/SL_TL_ord,NA)))))),
+         l_max_TL = ifelse(l_max_type == "TL",l_max,
+                    ifelse(l_max_type == "TH",l_max*TL_TH_sp,
+                    ifelse(l_max_type == "SL" & !is.na(SL_TL_sp),l_max/SL_TL_sp,
+                    ifelse(l_max_type == "SL" & !is.na(SL_TL_gen),l_max/SL_TL_gen,
+                    ifelse(l_max_type == "SL" & !is.na(SL_TL_fam),l_max/SL_TL_fam,
+                    ifelse(l_max_type == "SL" & !is.na(SL_TL_ord),l_max/SL_TL_ord,NA))))))) %>%
+  dplyr::select(sci_name:shape_depressiform,l_min_TL,l_max_TL,l_min:addl_url4)
+
+#Add morphometric ratios for each species (morph_summary) generated in 'Morphometric Ratios Processing' (above)
+#1) Figure out species/lifestage searched, but no morphometric images found & add to morph_summary
+morph_no = read_csv("./trait_data/morphological/5_morphometric_ratios_raw.csv") %>%
+  filter(replicates == 0) %>%
+  distinct(class,order,family,genus,sci_name,life_stage)
+
+morph_summary_full = morph_summary %>%
+  full_join(morph_no) %>%
+  rename(TL_BH = mean_TL_BH, SL_BH = mean_SL_BH,
+         TL_TH = mean_TL_TH, SL_TH = mean_SL_TH,
+         SL_TL = mean_SL_TL, eye_TL = mean_eye_TL) %>%
+  mutate(tax_level = "species")
+
+#Combine morphological traits & morphometric ratio summary tables
+morph_final = morphological_use %>%
+  mutate(coarse = 1) %>%
+  full_join(morph_summary_full %>% mutate(morph = 1)) %>%
+  mutate(across(body_shape:addl_url3, ~ifelse(is.na(coarse),-9999,.x)),
+         across(TL_BH:n_eye_TL, ~ifelse(is.na(morph),-9999,.x))) %>%
+  arrange(sci_name,life_stage) %>%
+  dplyr::select(-coarse,-morph)
+#-9999 = not searched, NA = searched but not found.
+
+write.csv(morph_final, './trait_data/morphological/4_morphological_traits.csv', row.names = FALSE)
+
+rm(habitat_behavior,population,morphological,morphological_use,trait_collect,trait_full,morph_no,morph_final,morph_proxy_wide,morph_summary,morph_summary_full)
+```
+
+## Combined Trait Data
+
+This code section combines all 4 types of traits (1. habitat/behavioral, 2. morphological, 3. nutritional quality, 4. population status) into one final database table. Final output table includes only key variables most useful for future analyses, and excludes references/extraneous information. Since nutritional quality and morphometric ratios has separate data collection efforts, species may not exactly match the other collection efforts. Thus, we indicate between species not searched with -9999, to differentiate from species search but information was not found, indicated with NA.
+
+Inputs:
+Habitat/behavioral (3_habitat_behavior_traits.csv), Morphological (4_morphological_traits.csv), Nutritional Quality (7_nutritional_raw.csv & 7_nutritional_raw.csv), Population status (8_population_status_traits.csv) 
+
+Code: Combines all types of trait data, codes species not searched in a specific data collection methods as -9999, excludes unnecessary columns
+
+Output: Main database table with all key variables (1_trait_database.csv)
+
+```{r Combined trait data, results = FALSE, message=FALSE}
+habitat_behavior = read_csv("./habitat_behavioral_traits/table3_habitat_behavior_traits/3_habitat_behavior_traits.csv")
+morphological = read_csv("./morphological_traits/table4_morphological_traits/4_morphological_traits.csv")
+quality = read_csv("./nutritional_quality_traits/table6_nutritional_traits/6_nutritional_traits.csv")
+quality_raw = read_csv("./nutritional_quality_traits/table7_nutritional_raw/7_nutritional_raw.csv")
+population = read_csv("./population_status_traits/table8_population_status_traits/8_population_status_traits.csv")
+
+#For nutritional quality - add species searched and not found to the nutritional quality trait summary (which only includes species with data)
+qual_no_data = quality_raw %>%
+  ungroup %>%
+  filter(qual_found == "no" | qual_found == "organ" | qual_found == "no_water") %>%
+  dplyr::select(class,order,family,genus,sci_name,tax_level) %>%
+  distinct(.) %>%
+  anti_join(quality_raw %>%
+            ungroup %>%
+            filter(qual_found == "yes" | qual_found == "water_proxy" | qual_found == "unpub_data") %>%
+            dplyr::select(class,order,family,genus,sci_name,tax_level) %>%
+            distinct(.))
+
+quality_all = quality %>%
+  full_join(qual_no_data)
+
+#Create main database table
+#Includes key variables from all trait types combined (variables best used for analyses, excludes references)
+all_traits = habitat_behavior %>%
+  full_join(population) %>%
+  mutate(hab_behav_pop = 1) %>%
+  full_join(morphological %>% dplyr::select(-addl_ref,-addl_url,-addl_ref2,-addl_url2,
+                                          -addl_ref3,-addl_url3,-addl_ref4,-addl_url4) %>% mutate(morph = 1)) %>% 
+  full_join(quality_all %>% mutate(qual = 1), by= c("class","order","family","genus","sci_name","tax_level")) %>%
+  dplyr::select(class:sci_name,tax_level,life_stage,depth_min:temp_mean,vert_habitat,vert_benthic:vert_bathypelagic,
+                horz_habitat,horz_intertidal:horz_oceanic,diel_migrant,refuge,season_migrant,body_shape,l_min_TL,l_max_TL,
+                phys_defense,defense_spines,exoskeleton,transparent,col_disrupt,silver,countershade,photophore,
+                gregarious,gregarious_solitary:gregarious_schooling,trophic_level,IUCN_status,commercial,recreational,
+                lipid:energy_pacific,TL_BH:eye_TL,hab_behav_pop,morph,qual) %>%
+  mutate(across(lipid:energy_pacific, ~ifelse(is.na(qual),-9999,.x)),
+         across(depth_min:season_migrant, ~ifelse(is.na(hab_behav_pop),-9999,.x)),
+         across(gregarious:recreational, ~ifelse(is.na(hab_behav_pop),-9999,.x)),
+         across(body_shape:photophore, ~ifelse(is.na(morph),-9999,.x)),
+         across(TL_BH:eye_TL, ~ifelse(is.na(morph),-9999,.x)),
+         across(lipid:energy_pacific, ~ifelse(life_stage == "larva",-9999,.x))) %>%
+  dplyr::select(-hab_behav_pop,-morph,-qual) %>%
+  arrange(sci_name,life_stage)
+#-9999 = not searched, NA = searched but not found.
+#Nutritional quality is not lifestage species, but integrates adults and juveniles, thus all larva values for qual are -9999.
+#Taxa only searched for nutritional quality don't have a lifestage associated because they are integrated across adults and juveniles.
+
+write.csv(all_traits, './overview/all_traits/1_pelagic_species_trait_database.csv', row.names = FALSE)
+
+rm(habitat_behavior,morphological,population,quality_all,quality,quality_raw,qual_no_data,all_traits)
+```
+

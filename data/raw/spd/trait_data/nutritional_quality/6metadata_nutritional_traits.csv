@@ -1,0 +1,25 @@
+column,description,data_type,values
+class,Species class name,annotation,class
+order,Species order name,annotation,order
+family,Species family name,annotation,family
+genus,Species genus name,annotation,genus
+sci_name,Species scientific name (Genus species),annotation,genus + species
+tax_level,Level of taxonomic identification,categorical,"class, order, family, genus, species"
+lipid,Mean lipid content from all regions; % of wet weight (ww),continuous,percent (%)
+protein,Mean protein content from all regions; % of ww,continuous,%
+energy,Mean energy density from all regions; per gram ww,continuous,kj/g
+lipid_pacific,Mean lipid content from Pacific Ocean data; % of wet weight (ww),continuous,%
+protein_pacific,Mean protein content from Pacific Ocean data; % of ww,continuous,%
+energy_pacific,Mean energy density from Pacific Ocean data; per gram ww,continuous,kj/g
+n_lipid,Sample size for mean lipid content from all regions,continuous,NA
+n_protein,Sample size for mean protein content from all regions,continuous,NA
+n_energy,Sample size for mean energy density from all regions,continuous,NA
+n_lipid_pacific,Sample size for mean lipid content from Pacific Ocean data,continuous,NA
+n_protein_pacific,Sample size for mean protein content from Pacific Ocean data,continuous,NA
+n_energy_pacific,Sample size for mean energy density from Pacific Ocean data,continuous,NA
+sd_lipid,Standard deviation for mean lipid content from all regions,continuous,NA
+sd_protein,Standard deviation for mean protein content from all regions,continuous,NA
+sd_energy,Standard deviation for mean energy density from all regions,continuous,NA
+sd_lipid_pacific,Standard deviation for mean lipid content from Pacific Ocean data,continuous,NA
+sd_protein_pacific,Standard deviation for mean protein content from Pacific Ocean data,continuous,NA
+sd_energy_pacific,Standard deviation for mean energy density from Pacific Ocean data,continuous,NA

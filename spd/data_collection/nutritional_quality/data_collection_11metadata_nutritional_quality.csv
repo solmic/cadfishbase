@@ -1,0 +1,50 @@
+column,instructions,data_type,values
+qual_db_id,Unique sequential identified for each row,continuous,
+class,Class name of species,annotation,
+order,Order name of species,annotation,
+family,Family name of species,annotation,
+genus,Genus name of species,annotation,
+sci_name,Species scientific name (Genus species),annotation,
+common_name,Species common name,annotation,
+tax_level,Level of taxonomic identification,categorical,"class, order, family, genus, species"
+initials,Initials of individual collecting data,annotation,
+qual_found,"Status of literature search:  yes = usable data found;  water_proxy = data in dry weight, conversion to wet weight used species-specific water content proxy from the literature (see notes);  not_whole = data for a part of the body, not entire organism (not usable; see notes);  no_water = data in dry weight, water content not provided and proxy cannot be used;  no = no data found",categorical,"yes, water_proxy, not_whole, no_water, no"
+n,sample size for nutritional analysis,continuous,
+lipid_ww,"Lipid content, reported as % of wet weight",continuous,%
+protein_ww,"Protein content, reported as % of wet weight",continuous,%
+energy_ww,"Energy density, reported per g of wet weight",continuous,kj/g
+energy_method,Indicates analysis method for energy density,categorical,"bomb calorimetry, proximate composition"
+lipid_dw,"Lipid content, reported as % of dry weight",continuous,%
+protein_dw,"Protein content, reported as % of dry weight",continuous,%
+energy_dw,"Energy density, reported per g of dry weight",continuous,kj/g
+lipid_afdw,"Lipid content, reported as % of ash-free dry weight",continuous,%
+protein_afdw,"Protein content, reported as % of ash-free dry weight",continuous,%
+energy_afdw,"Energy density, reported per g of ash-free dry weight",continuous,kj/g
+water,water content; % of wet weight,continuous,%
+ash_ww,ash content; % of wet weight,continuous,%
+ash_dw,ash content; % of dry weight,continuous,%
+length_type,"Length measurement type; TL = total length, SL = standard length (fish), FL = fork length (fish), ML = mantle length (cephalopods), CL = carapace length (crustaceans), PL = pen length (cephalopods)",categorical,"TL, SL, FL, ML, CL, PL"
+length_mean_cm,"Mean length of organism analyzed; if not provided, calculated as average of min and max length",continuous,cm
+length_min_cm,Minimum length of organism analyzed,continuous,cm
+length_max_cm,Maximum length of organism analyzed,continuous,cm
+ww_mean_g,"Mean wet weight of organism analyzed; if not provided, calculated as average of min and max weight",continuous,g
+ww_min_g,Minimum wet weight of organism analyzed,continuous,g
+ww_max_g,Maximum wet weight of organism analyzed,continuous,g
+life_stage,Lifestage of species analyzed,categorical,"categorical: (i) adult, (ii) juvenile, (iii) NA (unknown)"
+age,Age of species analyzed,continuous,years
+sex,Sex of species analyzed,categorical,"categorical: (i) female, (ii) male, (iii) NA (unknown)"
+start_day,Start day of collection,continuous,
+end_day,End day of collection,continuous,
+start_month,Start month of collection,continuous,
+end_month,End month of collection,continuous,
+year_start,Start year of collection,continuous,
+year_end,End year of collection,continuous,
+lat,Latitude of collection (often estimated or mean),continuous,Decimal degrees
+long,Longitude of collection (often estimated or mean),continuous,Decimal degrees
+longhurst_province,Longhurst biogeochemical region of collection; https://en.wikipedia.org/wiki/Longhurst_code,categorical,
+specific_location,Specific location details of collection,categorical,
+ocean_basin,Ocean basin of collection,categorical,
+publication_year,Publicaiton year of reference,continuous,year(s)
+reference,Reference for publication,reference,
+url,Website for reference,url,
+notes,Notes,annotation,
